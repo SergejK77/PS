@@ -1,0 +1,4 @@
+Get-AppxPackage *skypeapp* | Remove-AppxPackage
+Get-AppxPackage *solitairecollection* | Remove-AppxPackage
+Get-AppxPackage *xboxapp* | Remove-AppxPackage
+Get-AppxPackage *3dviewer* | Remove-AppxPackage
