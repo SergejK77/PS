@@ -1,0 +1,24 @@
+# Erhalte Informationen über den installierten RAM
+$memoryDetails = Get-WmiObject -Class Win32_PhysicalMemory
+
+# Ausgabe der RAM-Details
+foreach ($memory in $memoryDetails) {
+    Write-Output "BankLabel: $($memory.BankLabel)"
+    Write-Output "Capacity: $([math]::round($memory.Capacity / 1GB, 2)) GB"
+    Write-Output "Speed: $($memory.Speed) MHz"
+    Write-Output "Manufacturer: $($memory.Manufacturer)"
+    Write-Output "SerialNumber: $($memory.SerialNumber)"
+    Write-Output "PartNumber: $($memory.PartNumber)"
+    Write-Output "MemoryType: $($memory.MemoryType)"
+    Write-Output "FormFactor: $($memory.FormFactor)"
+    Write-Output "-----------------------------"
+}
+
+# Gesamtübersicht des verfügbaren und genutzten RAM
+$totalMemory = Get-WmiObject -Class Win32_ComputerSystem
+$totalPhysicalMemory = $totalMemory.TotalPhysicalMemory
+$availableMemory = Get-WmiObject -Class Win32_OperatingSystem
+$freePhysicalMemory = $availableMemory.FreePhysicalMemory * 1KB
+
+Write-Output "Gesamtspeicher: $([math]::round($totalPhysicalMemory / 1GB, 2)) GB"
+Write-Output "Verfügbarer Speicher: $([math]::round($freePhysicalMemory / 1GB, 2)) GB"
