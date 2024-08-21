@@ -1,0 +1,85 @@
+param (
+    [Parameter(Mandatory=$true)]
+    [string]$ReferenceUser,       # SamAccountName des Referenzbenutzers
+    [Parameter(Mandatory=$true)]
+    [string]$NewFirstName,        # Vorname des neuen Benutzers
+    [Parameter(Mandatory=$true)]
+    [string]$NewLastName,         # Nachname des neuen Benutzers
+    [Parameter(Mandatory=$true)]
+    [string]$NewPassword          # Passwort des neuen Benutzers
+)
+
+try {
+    # Referenzbenutzer anhand des SamAccountName (Loginname) finden
+    $ReferenceUserObject = Get-ADUser -Filter {SamAccountName -eq $ReferenceUser} -Properties *
+
+    if (-not $ReferenceUserObject) {
+        Write-Host "Der Referenzbenutzer '$ReferenceUser' wurde nicht gefunden." -ForegroundColor Red
+        exit
+    }
+
+    # SamAccountName (Loginname) für den neuen Benutzer automatisch generieren
+    $NewUserName = ($NewFirstName + "." + $NewLastName).ToLower()
+
+    # OU vom Referenzbenutzer übernehmen
+    $OU = $ReferenceUserObject.DistinguishedName -replace "CN=.*?,", ""
+
+    # Erstellen einer Attributliste, die nur nicht-NULL-Werte enthält
+    $attributes = @{}
+    if ($ReferenceUserObject.Description) { $attributes["Description"] = $ReferenceUserObject.Description }
+    if ($ReferenceUserObject.Department) { $attributes["Department"] = $ReferenceUserObject.Department }
+    if ($ReferenceUserObject.Title) { $attributes["Title"] = $ReferenceUserObject.Title }
+    if ($ReferenceUserObject.OfficePhone) { $attributes["OfficePhone"] = $ReferenceUserObject.OfficePhone }
+    if ($ReferenceUserObject.StreetAddress) { $attributes["StreetAddress"] = $ReferenceUserObject.StreetAddress }
+    if ($ReferenceUserObject.City) { $attributes["City"] = $ReferenceUserObject.City }
+    if ($ReferenceUserObject.State) { $attributes["State"] = $ReferenceUserObject.State }
+    if ($ReferenceUserObject.PostalCode) { $attributes["PostalCode"] = $ReferenceUserObject.PostalCode }
+    if ($ReferenceUserObject.Country) { $attributes["Country"] = $ReferenceUserObject.Country }
+
+    # Benutzer erstellen
+    if ($attributes.Count -gt 0) {
+        New-ADUser `
+            -GivenName $NewFirstName `
+            -Surname $NewLastName `
+            -Name "$NewFirstName $NewLastName" `
+            -SamAccountName $NewUserName `
+            -UserPrincipalName "$NewUserName@$(($ReferenceUserObject.UserPrincipalName -split '@')[1])" `
+            -Path $OU `
+            -AccountPassword (ConvertTo-SecureString $NewPassword -AsPlainText -Force) `
+            -Enabled $true `
+            -ChangePasswordAtLogon $true `
+            -OtherAttributes $attributes
+    } else {
+        New-ADUser `
+            -GivenName $NewFirstName `
+            -Surname $NewLastName `
+            -Name "$NewFirstName $NewLastName" `
+            -SamAccountName $NewUserName `
+            -UserPrincipalName "$NewUserName@$(($ReferenceUserObject.UserPrincipalName -split '@')[1])" `
+            -Path $OU `
+            -AccountPassword (ConvertTo-SecureString $NewPassword -AsPlainText -Force) `
+            -Enabled $true `
+            -ChangePasswordAtLogon $true
+    }
+
+    Write-Host "Benutzer $NewUserName wurde erfolgreich erstellt." -ForegroundColor Green
+
+    # Übertragen der Gruppenmitgliedschaften
+    $Groups = Get-ADUser -Identity $ReferenceUserObject.SamAccountName -Properties MemberOf | Select-Object -ExpandProperty MemberOf
+
+    foreach ($Group in $Groups) {
+        Add-ADGroupMember -Identity $Group -Members $NewUserName
+    }
+
+    Write-Host "Gruppenmitgliedschaften wurden vom Referenzbenutzer übertragen." -ForegroundColor Green
+
+    # Übertragen der Zugriffsrechte (ACLs) vom Referenzbenutzer
+    $NewUserObject = Get-ADUser -Identity $NewUserName
+    $ACLs = Get-ACL -Path "AD:\$($ReferenceUserObject.DistinguishedName)"
+    Set-Acl -Path "AD:\$($NewUserObject.DistinguishedName)" -AclObject $ACLs
+
+    Write-Host "Zugriffsrechte wurden vom Referenzbenutzer übertragen." -ForegroundColor Green
+
+} catch {
+    Write-Host "Ein Fehler ist aufgetreten: $_" -ForegroundColor Red
+}
